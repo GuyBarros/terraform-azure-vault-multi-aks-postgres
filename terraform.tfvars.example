@@ -1,0 +1,32 @@
+###############################################################################
+# terraform.tfvars.example
+# Copy to terraform.tfvars and fill in secrets — do NOT commit to git!
+###############################################################################
+
+project_name       = "hashi-global"
+kubernetes_version = "1.29"
+aks_node_vm_size   = "Standard_D4as_v7"
+aks_node_count     = 3
+vault_replica_count = 3
+
+postgres_admin_username = "pgadmin"
+postgres_admin_password = "CHANGE_ME_strong_password_123!"
+postgres_sku_name       = "GP_Standard_D4s_v3"
+postgres_storage_mb     = 131072
+postgres_version        = "15"
+
+# Vault Enterprise — obtain license from https://portal.cloud.hashicorp.com
+vault_enterprise_license = "02ABCDEF..."   # your full license string
+vault_enterprise_version = "1.17.0-ent"
+
+# Docker Hub credentials for pulling hashicorp/vault-enterprise
+# Create a read-only PAT at https://hub.docker.com/settings/security
+hcp_registry_username = "your-dockerhub-username"
+hcp_registry_password = "dckr_pat_XXXXXXXXXXXX"
+
+common_tags = {
+  managed_by  = "terraform"
+  project     = "hashi-global"
+  environment = "production"
+  owner       = "platform-team"
+}
