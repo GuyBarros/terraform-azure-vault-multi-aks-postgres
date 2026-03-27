@@ -25,8 +25,6 @@ kubectl exec -n vault vault-0 --context v0326-aks-brazilsouth -- vault operator 
 echo https://$(kubectl get svc vault-ui -n vault -o json --context v0326-aks-brazilsouth | jq -r ".status.loadBalancer.ingress[0].ip"):8200
 
 
-
-
 #### Check CAs
 kubectl get secret vault-tls -n vault \
   --context v0326-aks-uksouth \

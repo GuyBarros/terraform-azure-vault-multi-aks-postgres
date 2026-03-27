@@ -7,8 +7,8 @@ echo #Transform Engine Variables
 export TRANSFORM_PATH_NAME=org
 export TRANSFORM_ROLE_NAME=agent
 echo #Tokenization Store Variables
-export POSTGRES_ADDR=v0326-psql-primary.postgres.database.azure.com:5432 # Esse funciona
-
+#export POSTGRES_ADDR=v0326-psql-primary.postgres.database.azure.com:5432 # Esse funciona
+export POSTGRES_ADDR=postgres.postgres.v0326.internal
 export POSTGRES_DATABASE=vault
 export POSTGRES_USERNAME=pgadmin
 export POSTGRES_PASSWORD=CHANGE_ME_strong_password_123!
@@ -64,6 +64,7 @@ supported_transformations=tokenization
 
 vault write /org/stores/$TOKEN_STORE_NAME/schema username=$POSTGRES_USERNAME password=$POSTGRES_PASSWORD
 
+vault read /org/stores/$TOKEN_STORE_NAME
 echo ###################### Tokenization #######################
 vault write $TRANSFORM_PATH_NAME/transformations/tokenization/ticket \
   convergent=false \
@@ -74,15 +75,5 @@ vault write $TRANSFORM_PATH_NAME/transformations/tokenization/ticket \
 echo ###################### Test Tokenization #######################
 vault write org/encode/agent value="HEllo World" transformation=ticket
 
-vault write org/decode/agent value="Q4tYgFXHxUXoo9HxYY23SM3KiFaW1Zw9udCWXNYWD4XMETiULvPbEY" transformation=ticket
+vault write org/decode/agent value="Q4tYgFXHxUWm1ZgLQdzNdosQcWUtgNVbUPVbtmpFMCk8JattfkhN1u" transformation=ticket
 
-
-postgres.v0326.internal
-
-kubectl run nettest --image=busybox:1.28 --restart=Never -- sleep 3600
-kubectl exec nettest -- nc -zv -w 5 postgres.v0326.internal 5432
-
-
-kubectl run dnsutils --image=busybox:1.28 --restart=Never -- sleep 3600
-kubectl exec dnsutils -- nslookup postgres.v0326.internal
-kubectl delete pod dnsutils
