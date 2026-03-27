@@ -5,7 +5,7 @@
 
 project_name       = "hashi-global"
 kubernetes_version = "1.29"
-aks_node_vm_size   = "Standard_D4as_v7"
+aks_node_vm_size   = "Standard_D4pds_v6"
 aks_node_count     = 3
 vault_replica_count = 3
 
@@ -30,3 +30,9 @@ common_tags = {
   environment = "production"
   owner       = "platform-team"
 }
+
+
+# Extra IPs for Vault TLS cert SANs — add the cluster LB IPs here
+# Get them with: kubectl get svc vault-cluster-lb -n vault -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
+vault_london_additional_ip_sans    = ["20.162.146.120"]  # London cluster LB IP
+vault_sao_paulo_additional_ip_sans = []                   # São Paulo cluster LB IP

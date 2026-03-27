@@ -23,6 +23,10 @@ terraform {
       source  = "hashicorp/time"
       version = "~> 0.11"
     }
+    tls = {
+      source  = "hashicorp/tls"
+      version = "~> 4.0"
+    }
   }
 }
 
@@ -150,11 +154,13 @@ module "aks_sao_paulo" {
   service_cidr           = "172.16.0.0/16"
   dns_service_ip         = "172.16.0.10"
 
+  # Allow port 8201 inbound/outbound from London's AKS subnet for Vault replication
+  vault_replication_source_cidrs = ["10.2.0.0/22"]
+
   node_pool = {
-    #vm_size    = var.aks_node_vm_size
-    vm_size    = "standard_d16s_v6"
+    vm_size    = var.aks_node_vm_size
     node_count = var.aks_node_count
-    zones      = [ "2"]   # brazilsouth supports AZs
+    zones      = []   # brazilsouth does not support Availability Zones
   }
 }
 
@@ -175,6 +181,9 @@ module "aks_london" {
   postgresql_subnet_cidr = "10.2.8.0/24"
   service_cidr           = "172.17.0.0/16"
   dns_service_ip         = "172.17.0.10"
+
+  # Allow port 8201 inbound/outbound from São Paulo's AKS subnet for Vault replication
+  vault_replication_source_cidrs = ["10.1.0.0/22"]
 
   node_pool = {
     vm_size    = var.aks_node_vm_size
@@ -232,6 +241,9 @@ module "postgresql" {
   delegated_subnet_id_primary = module.aks_london.postgresql_subnet_id
   delegated_subnet_id_replica = module.aks_sao_paulo.postgresql_subnet_id
 
+  # Allow AKS pods from both regions to reach PostgreSQL on port 5432
+  aks_subnet_cidrs = ["10.2.0.0/22", "10.1.0.0/22"]
+
   # Pass peering IDs so Terraform knows to wait for peering before PostgreSQL
   vnet_peering_ids = [
     azurerm_virtual_network_peering.london_to_sao_paulo.id,
@@ -239,6 +251,31 @@ module "postgresql" {
   ]
 
   tags = merge(var.common_tags, { component = "postgresql-global" })
+}
+
+
+###############################################################################
+# Geo-Routing — Split-Horizon Private DNS
+# Provides a single FQDN that resolves to the nearest PostgreSQL server
+# based on the VNet the client is in (London → primary, SP → replica).
+###############################################################################
+
+module "traffic_manager" {
+  source = "./modules/traffic_manager"
+
+  project_name = var.project_name
+
+  # Each DNS zone must live in its own RG — Azure forbids two Private DNS zones
+  # with the same name in the same resource group.
+  resource_group_name_london    = azurerm_resource_group.london.name
+  resource_group_name_sao_paulo = azurerm_resource_group.sao_paulo.name
+
+  primary_fqdn      = module.postgresql.primary_fqdn
+  replica_fqdn      = module.postgresql.replica_fqdn
+  vnet_id_london    = module.aks_london.vnet_id
+  vnet_id_sao_paulo = module.aks_sao_paulo.vnet_id
+
+  tags = merge(var.common_tags, { component = "geo-routing" })
 }
 
 ###############################################################################
@@ -329,6 +366,88 @@ resource "azurerm_key_vault_key" "vault_unseal_london" {
 
 
 ###############################################################################
+# Vault UI Public IP addresses
+# Created BEFORE the Helm release so the IP is known at TLS cert generation
+# time — enabling a single apply to produce a cert with the correct SAN.
+#
+# Must be in the AKS node resource group (MC_*) — AKS only accepts Public IPs
+# from that RG when binding them to a LoadBalancer service.
+###############################################################################
+
+resource "azurerm_public_ip" "vault_ui_sao_paulo" {
+  name                = "vault-ui-pip-brazil-south"
+  location            = azurerm_resource_group.sao_paulo.location
+  resource_group_name = module.aks_sao_paulo.node_resource_group
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = merge(var.common_tags, { region = "brazil-south", component = "vault-ui" })
+}
+
+resource "azurerm_public_ip" "vault_ui_london" {
+  name                = "vault-ui-pip-uk-south"
+  location            = azurerm_resource_group.london.location
+  resource_group_name = module.aks_london.node_resource_group
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = merge(var.common_tags, { region = "uk-south", component = "vault-ui" })
+}
+
+# Dedicated Public IPs for port 8201 (Vault cluster/replication port).
+# A separate IP is needed because an Azure LB rule can only map one port
+# per frontend IP — 8200 is already used by the vault-ui service above.
+resource "azurerm_public_ip" "vault_cluster_sao_paulo" {
+  name                = "vault-cluster-pip-brazil-south"
+  location            = azurerm_resource_group.sao_paulo.location
+  resource_group_name = module.aks_sao_paulo.node_resource_group
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = merge(var.common_tags, { region = "brazil-south", component = "vault-cluster" })
+}
+
+resource "azurerm_public_ip" "vault_cluster_london" {
+  name                = "vault-cluster-pip-uk-south"
+  location            = azurerm_resource_group.london.location
+  resource_group_name = module.aks_london.node_resource_group
+  allocation_method   = "Static"
+  sku                 = "Standard"
+  tags                = merge(var.common_tags, { region = "uk-south", component = "vault-cluster" })
+}
+
+###############################################################################
+# Shared Vault Root CA
+#
+# A single CA is generated here and its cert + key are passed into both vault
+# module instances. Both clusters' server certs are signed by this same CA,
+# so they automatically trust each other — no ca_file argument needed when
+# enabling Performance Replication.
+###############################################################################
+
+resource "tls_private_key" "vault_shared_ca" {
+  algorithm   = "ECDSA"
+  ecdsa_curve = "P256"
+}
+
+resource "tls_self_signed_cert" "vault_shared_ca" {
+  private_key_pem = tls_private_key.vault_shared_ca.private_key_pem
+
+  subject {
+    common_name  = "Vault Shared Root CA"
+    organization = "HashiCorp Vault"
+  }
+
+  validity_period_hours = 87600 # 10 years
+  is_ca_certificate     = true
+  set_subject_key_id    = true
+
+  allowed_uses = [
+    "cert_signing",
+    "crl_signing",
+    "key_encipherment",
+    "digital_signature",
+  ]
+}
+
+###############################################################################
 # Vault Enterprise - São Paulo
 ###############################################################################
 
@@ -345,10 +464,21 @@ module "vault_sao_paulo" {
   replica_count      = var.vault_replica_count
   region_label       = "brazil-south"
 
-  # AKV auto-unseal values resolved in root, passed in as plain strings
   akv_tenant_id  = data.azurerm_client_config.current.tenant_id
   akv_vault_name = azurerm_key_vault.vault_unseal_sao_paulo.name
   akv_key_name   = azurerm_key_vault_key.vault_unseal_sao_paulo.name
+  akv_client_id  = module.aks_sao_paulo.kubelet_identity_client_id
+
+  # Pre-created Public IP — known before TLS cert generation
+  lb_ip            = azurerm_public_ip.vault_ui_sao_paulo.ip_address
+  cluster_lb_ip    = azurerm_public_ip.vault_cluster_sao_paulo.ip_address
+  cluster_pip_name = azurerm_public_ip.vault_cluster_sao_paulo.name
+
+  additional_ip_sans = var.vault_sao_paulo_additional_ip_sans
+
+  # Shared CA — both clusters sign with the same root so they trust each other
+  shared_ca_cert_pem        = tls_self_signed_cert.vault_shared_ca.cert_pem
+  shared_ca_private_key_pem = tls_private_key.vault_shared_ca.private_key_pem
 
   vault_enterprise_license = var.vault_enterprise_license
   vault_enterprise_version = var.vault_enterprise_version
@@ -377,6 +507,18 @@ module "vault_london" {
   akv_tenant_id  = data.azurerm_client_config.current.tenant_id
   akv_vault_name = azurerm_key_vault.vault_unseal_london.name
   akv_key_name   = azurerm_key_vault_key.vault_unseal_london.name
+  akv_client_id  = module.aks_london.kubelet_identity_client_id
+
+  # Pre-created Public IP — known before TLS cert generation
+  lb_ip            = azurerm_public_ip.vault_ui_london.ip_address
+  cluster_lb_ip    = azurerm_public_ip.vault_cluster_london.ip_address
+  cluster_pip_name = azurerm_public_ip.vault_cluster_london.name
+
+  additional_ip_sans = var.vault_london_additional_ip_sans
+
+  # Shared CA — both clusters sign with the same root so they trust each other
+  shared_ca_cert_pem        = tls_self_signed_cert.vault_shared_ca.cert_pem
+  shared_ca_private_key_pem = tls_private_key.vault_shared_ca.private_key_pem
 
   vault_enterprise_license = var.vault_enterprise_license
   vault_enterprise_version = var.vault_enterprise_version

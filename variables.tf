@@ -15,9 +15,11 @@ variable "kubernetes_version" {
 }
 
 variable "aks_node_vm_size" {
-  description = "VM size for AKS default node pool"
+  description = "VM size for AKS node pools. Must support Premium Storage for Vault's managed-csi-premium PVCs."
   type        = string
-  default     = "Standard_D4as_v7"  # Available in both brazilsouth and uksouth
+  # Standard_D4pds_v6 — explicitly in uksouth and brazilsouth allowed lists,
+  # supports Premium_LRS storage, 4 vCPU / 16 GB RAM.
+  default     = "Standard_D4pds_v6"
 }
 
 variable "aks_node_count" {
@@ -100,4 +102,17 @@ variable "hcp_registry_password" {
   description = "Docker Hub password or PAT for pulling the hashicorp/vault-enterprise image"
   type        = string
   sensitive   = true
+}
+
+
+variable "vault_london_additional_ip_sans" {
+  description = "Extra IPs to add to London Vault TLS cert SANs (e.g. manually created cluster LB IPs)"
+  type        = list(string)
+  default     = []
+}
+
+variable "vault_sao_paulo_additional_ip_sans" {
+  description = "Extra IPs to add to São Paulo Vault TLS cert SANs"
+  type        = list(string)
+  default     = []
 }

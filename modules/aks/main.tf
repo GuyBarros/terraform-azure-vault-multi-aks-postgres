@@ -89,6 +89,16 @@ resource "azurerm_kubernetes_cluster_node_pool" "vault" {
   node_taints = ["workload=vault:NoSchedule"]
 
   tags = var.tags
+
+  lifecycle {
+    # Prevent Terraform from failing when the node pool already exists in Azure
+    # but isn't in state (e.g. after a partial apply). Also ignore autoscaler-
+    # driven node count changes so Terraform doesn't fight the cluster autoscaler.
+    ignore_changes = [
+      node_count,
+      tags,
+    ]
+  }
 }
 
 ###############################################################################
@@ -108,4 +118,93 @@ resource "azurerm_subnet" "postgresql" {
       actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
     }
   }
+}
+
+###############################################################################
+# Network Security Group — Vault replication port (8201)
+#
+# Port 8201 is Vault's cluster port, used for:
+#   - Raft peer-to-peer replication within a cluster
+#   - Performance Replication between clusters across regions
+#
+# We create an NSG, allow 8201 inbound from the remote region's AKS subnet,
+# and associate it with the AKS subnet. Port 8200 (API) is handled by the
+# Azure Load Balancer and is already open publicly.
+###############################################################################
+
+resource "azurerm_network_security_group" "aks" {
+  name                = "${var.cluster_name}-nsg"
+  location            = var.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_network_security_rule" "vault_cluster_port_inbound" {
+  count = length(var.vault_replication_source_cidrs) > 0 ? 1 : 0
+
+  name                        = "allow-vault-cluster-port-inbound"
+  priority                    = 200
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "8201"
+  # Allow from Internet — cross-region replication uses public IPs across regions
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.aks.name
+  description                 = "Allow Vault cluster port 8201 inbound for Performance Replication"
+}
+
+resource "azurerm_network_security_rule" "vault_cluster_port_outbound" {
+  count = length(var.vault_replication_source_cidrs) > 0 ? 1 : 0
+
+  name                        = "allow-vault-cluster-port-outbound"
+  priority                    = 200
+  direction                   = "Outbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "8201"
+  destination_address_prefix  = "Internet"
+  source_address_prefix       = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.aks.name
+  description                 = "Allow Vault cluster port 8201 outbound for Performance Replication"
+}
+
+resource "azurerm_network_security_rule" "vault_api_port_inbound" {
+  name                        = "allow-vault-api-port-inbound"
+  priority                    = 210
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "8200"
+  source_address_prefix       = "Internet"
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.aks.name
+  description                 = "Allow Vault API port 8200 inbound from internet (fronted by Azure Load Balancer)"
+}
+
+resource "azurerm_network_security_rule" "postgresql_outbound" {
+  name                        = "allow-postgresql-outbound"
+  priority                    = 220
+  direction                   = "Outbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "5432"
+  source_address_prefix       = "*"
+  destination_address_prefix  = var.postgresql_subnet_cidr
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.aks.name
+  description                 = "Allow PostgreSQL port 5432 outbound from AKS pods to the delegated PostgreSQL subnet"
+}
+
+resource "azurerm_subnet_network_security_group_association" "aks" {
+  subnet_id                 = azurerm_subnet.aks.id
+  network_security_group_id = azurerm_network_security_group.aks.id
 }

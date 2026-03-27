@@ -48,6 +48,11 @@ output "kubelet_identity_object_id" {
   value       = azurerm_kubernetes_cluster.this.kubelet_identity[0].object_id
 }
 
+output "kubelet_identity_client_id" {
+  description = "Client ID of the AKS kubelet managed identity — passed to Vault seal config so Azure knows which identity to use when multiple exist"
+  value       = azurerm_kubernetes_cluster.this.kubelet_identity[0].client_id
+}
+
 output "vnet_id" {
   description = "Resource ID of the AKS VNet"
   value       = azurerm_virtual_network.this.id

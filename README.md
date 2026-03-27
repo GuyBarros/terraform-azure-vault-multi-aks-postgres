@@ -1,5 +1,4 @@
 # HashiCorp Global Infrastructure — Terraform
-#### this code was generated with the help of AI
 
 Multi-region Azure deployment: **AKS + HashiCorp Vault + PostgreSQL Flexible Server**
 

@@ -51,3 +51,9 @@ variable "dns_service_ip" {
   type        = string
   default     = "172.16.0.10"
 }
+
+variable "vault_replication_source_cidrs" {
+  description = "List of remote VNet CIDRs allowed to reach port 8201 (Vault cluster port) for Performance Replication. Typically the AKS subnet CIDR of the other region."
+  type        = list(string)
+  default     = []
+}

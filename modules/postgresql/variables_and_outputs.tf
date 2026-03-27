@@ -2,27 +2,45 @@
 # modules/postgresql/variables.tf
 ###############################################################################
 
-variable "resource_group_name"    { type = string }
-variable "project_name"           { type = string }
-variable "administrator_login"    { 
+variable "resource_group_name"    {
   type = string
-   sensitive = true
-    }
+}
+variable "project_name"           {
+  type = string
+}
+variable "administrator_login"    {
+  type = string
+  sensitive = true
+}
 variable "administrator_password" {
-   type = string
-    sensitive = true
-     }
-variable "sku_name"               { type = string }
-variable "storage_mb"             { type = number }
-variable "postgres_version"       { type = string }
-variable "tags"                   { type = map(string) }
+  type = string
+  sensitive = true
+}
+variable "sku_name"               {
+  type = string
+}
+variable "storage_mb"             {
+  type = number
+}
+variable "postgres_version"       {
+  type = string
+}
+variable "tags"                   {
+  type = map(string)
+}
 
 variable "primary" {
-  type = object({ location = string, zone = string })
+  type = object({
+    location = string
+    zone     = string
+  })
 }
 
 variable "replica" {
-  type = object({ location = string, zone = string })
+  type = object({
+    location = string
+    zone     = string
+  })
 }
 
 # VNet integration — replaces IP-based firewall rules
@@ -48,6 +66,12 @@ variable "delegated_subnet_id_replica" {
 
 variable "vnet_peering_ids" {
   description = "Resource IDs of VNet peerings to wait for before creating the replica (prevents ReadReplicaToSourceServerNetworkBlocked)"
+  type        = list(string)
+  default     = []
+}
+
+variable "aks_subnet_cidrs" {
+  description = "AKS subnet CIDRs from both regions — allowed to connect to PostgreSQL on port 5432"
   type        = list(string)
   default     = []
 }

@@ -73,8 +73,9 @@ resource "azurerm_postgresql_flexible_server" "primary" {
   private_dns_zone_id = azurerm_private_dns_zone.postgres.id
 
   high_availability {
-    mode                      = "ZoneRedundant"
-    standby_availability_zone = "2"
+    # SameZone HA is supported in all regions including uksouth and brazilsouth.
+    # ZoneRedundant requires Availability Zone support which neither region has.
+    mode = "SameZone"
   }
 
   maintenance_window {
@@ -183,4 +184,64 @@ resource "azurerm_postgresql_flexible_server_database" "vault" {
   server_id = azurerm_postgresql_flexible_server.primary.id
   charset   = "UTF8"
   collation = "en_US.utf8"
+}
+
+###############################################################################
+# NSG for PostgreSQL delegated subnets
+# Azure Flexible Server requires an NSG on the delegated subnet that explicitly
+# allows port 5432 inbound. Without this, connections from AKS pods are blocked.
+###############################################################################
+
+resource "azurerm_network_security_group" "postgresql_primary" {
+  name                = "${var.project_name}-psql-primary-nsg"
+  location            = var.primary.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_network_security_rule" "postgresql_primary_inbound" {
+  name                        = "allow-postgresql-inbound"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "5432"
+  source_address_prefixes     = var.aks_subnet_cidrs
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.postgresql_primary.name
+  description                 = "Allow PostgreSQL 5432 inbound from AKS subnets in both regions"
+}
+
+resource "azurerm_subnet_network_security_group_association" "postgresql_primary" {
+  subnet_id                 = var.delegated_subnet_id_primary
+  network_security_group_id = azurerm_network_security_group.postgresql_primary.id
+}
+
+resource "azurerm_network_security_group" "postgresql_replica" {
+  name                = "${var.project_name}-psql-replica-nsg"
+  location            = var.replica.location
+  resource_group_name = var.resource_group_name
+  tags                = var.tags
+}
+
+resource "azurerm_network_security_rule" "postgresql_replica_inbound" {
+  name                        = "allow-postgresql-inbound"
+  priority                    = 100
+  direction                   = "Inbound"
+  access                      = "Allow"
+  protocol                    = "Tcp"
+  source_port_range           = "*"
+  destination_port_range      = "5432"
+  source_address_prefixes     = var.aks_subnet_cidrs
+  destination_address_prefix  = "*"
+  resource_group_name         = var.resource_group_name
+  network_security_group_name = azurerm_network_security_group.postgresql_replica.name
+  description                 = "Allow PostgreSQL 5432 inbound from AKS subnets in both regions"
+}
+
+resource "azurerm_subnet_network_security_group_association" "postgresql_replica" {
+  subnet_id                 = var.delegated_subnet_id_replica
+  network_security_group_id = azurerm_network_security_group.postgresql_replica.id
 }
