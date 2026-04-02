@@ -116,3 +116,4 @@ variable "vault_sao_paulo_additional_ip_sans" {
   type        = list(string)
   default     = []
 }
+

@@ -84,6 +84,17 @@ server:
   nodeSelector:
     workload: vault
 
+  # Force Vault pods to use CoreDNS (ClusterFirst) so private DNS zones
+  # configured in the coredns-custom ConfigMap are resolvable by the
+  # Vault process itself, not just other pods in the cluster.
+  dnsPolicy: "ClusterFirst"
+  dnsConfig:
+    nameservers: []   # use CoreDNS automatically via ClusterFirst
+    searches:
+      - vault.svc.cluster.local
+      - svc.cluster.local
+      - cluster.local
+
   affinity:
     podAntiAffinity:
       requiredDuringSchedulingIgnoredDuringExecution:

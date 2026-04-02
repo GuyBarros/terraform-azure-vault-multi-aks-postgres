@@ -36,3 +36,5 @@ common_tags = {
 # Get them with: kubectl get svc vault-cluster-lb -n vault -o jsonpath='{.status.loadBalancer.ingress[0].ip}'
 vault_london_additional_ip_sans    = ["20.162.146.120"]  # London cluster LB IP
 vault_sao_paulo_additional_ip_sans = []                   # São Paulo cluster LB IP
+
+# az postgres flexible-server show -n <name> -g <rg> --query "network"

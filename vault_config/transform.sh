@@ -7,12 +7,13 @@ echo #Transform Engine Variables
 export TRANSFORM_PATH_NAME=org
 export TRANSFORM_ROLE_NAME=agent
 echo #Tokenization Store Variables
-#export POSTGRES_ADDR=v0326-psql-primary.postgres.database.azure.com:5432 # Esse funciona
-export POSTGRES_ADDR=postgres.postgres.v0326.internal
-export POSTGRES_DATABASE=vault
-export POSTGRES_USERNAME=pgadmin
-export POSTGRES_PASSWORD=CHANGE_ME_strong_password_123!
-
+# export POSTGRES_ADDR=v0326-psql-primary.postgres.database.azure.com:5432 # Esse funciona
+# #export POSTGRES_ADDR=postgres.postgres.v0326.internal
+# #export POSTGRES_ADDR=pgbouncer.pgbouncer.svc.cluster.local:5432
+# export POSTGRES_DATABASE=vault
+# export POSTGRES_USERNAME=pgadmin
+# export POSTGRES_PASSWORD=CHANGE_ME_strong_password_123!
+#export POSTGRES_PASSWORD=md5bd5caa5df9b2fa372eca73fd2b741d42
 echo ###################### Vault Setup ######################
 #Secret Engine
 vault secrets enable -path=$TRANSFORM_PATH_NAME transform 
@@ -75,5 +76,5 @@ vault write $TRANSFORM_PATH_NAME/transformations/tokenization/ticket \
 echo ###################### Test Tokenization #######################
 vault write org/encode/agent value="HEllo World" transformation=ticket
 
-vault write org/decode/agent value="Q4tYgFXHxUWm1ZgLQdzNdosQcWUtgNVbUPVbtmpFMCk8JattfkhN1u" transformation=ticket
+# vault write org/decode/agent value="Q4tYgFXHxUY99fJsdo9ykQDS1hneQ7cbRWgsAj31ue2Y8ew2FEMoeJ" transformation=ticket
 

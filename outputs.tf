@@ -104,3 +104,19 @@ output "vault_sao_paulo_cluster_ip" {
   description = "Public IP for São Paulo Vault cluster port 8201"
   value       = azurerm_public_ip.vault_cluster_sao_paulo.ip_address
 }
+
+###############################################################################
+# pgBouncer connection strings
+# Use these in Vault's database secrets engine instead of direct PostgreSQL
+###############################################################################
+
+output "pgbouncer_london_connection_host" {
+  description = "pgBouncer ClusterIP hostname for London — use in Vault database/config/postgres connection_url"
+  value       = module.pgbouncer_london.connection_string_host
+}
+
+output "pgbouncer_sao_paulo_connection_host" {
+  description = "pgBouncer ClusterIP hostname for São Paulo — use in Vault database/config/postgres connection_url"
+  value       = module.pgbouncer_sao_paulo.connection_string_host
+}
+

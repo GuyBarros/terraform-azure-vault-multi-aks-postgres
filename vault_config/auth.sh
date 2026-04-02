@@ -73,6 +73,10 @@ vault policy write "${POLICY_NAME}" - <<'POLICY'
 # Grants broad administrative access across the Vault cluster.
 # Restrict further in production environments.
 # ===========================================================================
+# Super Admin
+path "*" {
+  capabilities = ["create", "read", "update", "delete", "list", "sudo"]
+}
 
 # Transform secret engine
 path "org/*" {

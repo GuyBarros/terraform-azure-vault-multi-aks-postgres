@@ -175,6 +175,17 @@ resource "azurerm_postgresql_flexible_server_configuration" "log_connections" {
   depends_on = [azurerm_postgresql_flexible_server_configuration.max_connections]
 }
 
+# Allow md5 password authentication in addition to scram-sha-256.
+# Required for pgBouncer in transaction mode — pgBouncer cannot proxy
+# scram-sha-256 exchanges (stateful protocol, transaction mode is stateless).
+resource "azurerm_postgresql_flexible_server_configuration" "password_encryption" {
+  name      = "password_encryption"
+  server_id = azurerm_postgresql_flexible_server.primary.id
+  value     = "md5"
+
+  depends_on = [azurerm_postgresql_flexible_server_configuration.log_connections]
+}
+
 ###############################################################################
 # Vault Database
 ###############################################################################

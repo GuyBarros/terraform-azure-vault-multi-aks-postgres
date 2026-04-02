@@ -76,6 +76,7 @@ variable "aks_subnet_cidrs" {
   default     = []
 }
 
+
 ###############################################################################
 # modules/postgresql/outputs.tf
 ###############################################################################
@@ -99,3 +100,4 @@ output "vault_database_name" {
 output "private_dns_zone_id" {
   value = azurerm_private_dns_zone.postgres.id
 }
+

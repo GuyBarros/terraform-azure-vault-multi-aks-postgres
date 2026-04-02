@@ -10,6 +10,10 @@ kubectl exec -n vault vault-0 --context v0326-aks-uksouth -- vault operator init
 #Get the Vault UI LoadBalancer address:
 echo https://$(kubectl get svc vault-ui -n vault -o json --context v0326-aks-uksouth | jq -r ".status.loadBalancer.ingress[0].ip"):8200
 
+#Get the Cluster LB for cluster address LoadBalancer address:
+echo https://$(kubectl get svc vault-cluster -n vault -o json --context v0326-aks-uksouth | jq -r ".status.loadBalancer.ingress[0].ip"):8201
+
+
 ##do the same for the secondary cluster
 
 # Check if nodes are running

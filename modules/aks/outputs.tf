@@ -67,3 +67,8 @@ output "vnet_name" {
   description = "Name of the AKS VNet — needed for VNet peering"
   value       = azurerm_virtual_network.this.name
 }
+
+output "aks_subnet_id" {
+  description = "Resource ID of the AKS node subnet — used as ILB frontend subnet"
+  value       = azurerm_subnet.aks.id
+}

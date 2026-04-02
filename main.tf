@@ -192,6 +192,66 @@ module "aks_london" {
   }
 }
 
+
+###############################################################################
+# CoreDNS Custom Forwarders
+# Pods use CoreDNS (172.16/17.0.10) which only knows cluster-internal names.
+# These ConfigMaps add forwarding rules to Azure's DNS resolver so pods can
+# resolve PostgreSQL private DNS and the traffic_manager split-horizon zones.
+###############################################################################
+
+resource "kubernetes_config_map_v1_data" "coredns_custom_sao_paulo" {
+  provider = kubernetes.sao_paulo
+
+  metadata {
+    name      = "coredns-custom"
+    namespace = "kube-system"
+  }
+
+  data = {
+    "azure-private-dns.server" = <<-DNSEOF
+      private.postgres.database.azure.com:53 {
+          errors
+          cache 30
+          forward . 168.63.129.16
+      }
+      internal:53 {
+          errors
+          cache 30
+          forward . 168.63.129.16
+      }
+    DNSEOF
+  }
+
+  force = true
+}
+
+resource "kubernetes_config_map_v1_data" "coredns_custom_london" {
+  provider = kubernetes.london
+
+  metadata {
+    name      = "coredns-custom"
+    namespace = "kube-system"
+  }
+
+  data = {
+    "azure-private-dns.server" = <<-DNSEOF
+      private.postgres.database.azure.com:53 {
+          errors
+          cache 30
+          forward . 168.63.129.16
+      }
+      internal:53 {
+          errors
+          cache 30
+          forward . 168.63.129.16
+      }
+    DNSEOF
+  }
+
+  force = true
+}
+
 ###############################################################################
 # VNet Peering — London <-> São Paulo
 # Must exist BEFORE PostgreSQL module so the replica can reach the primary.
@@ -241,10 +301,8 @@ module "postgresql" {
   delegated_subnet_id_primary = module.aks_london.postgresql_subnet_id
   delegated_subnet_id_replica = module.aks_sao_paulo.postgresql_subnet_id
 
-  # Allow AKS pods from both regions to reach PostgreSQL on port 5432
   aks_subnet_cidrs = ["10.2.0.0/22", "10.1.0.0/22"]
 
-  # Pass peering IDs so Terraform knows to wait for peering before PostgreSQL
   vnet_peering_ids = [
     azurerm_virtual_network_peering.london_to_sao_paulo.id,
     azurerm_virtual_network_peering.sao_paulo_to_london.id,
@@ -525,4 +583,67 @@ module "vault_london" {
   hcp_registry_username    = var.hcp_registry_username
   hcp_registry_password    = var.hcp_registry_password
   replication_enabled      = true
+}
+
+###############################################################################
+# pgBouncer — Connection Pooler (São Paulo)
+#
+# Sits between Vault pods and the PostgreSQL replica. Vault's database secrets
+# engine connection string points to pgBouncer's ClusterIP instead of directly
+# to PostgreSQL — reducing the number of server-side connections dramatically.
+#
+# Connection URL for Vault database/config/postgres:
+#   postgresql://{{username}}:{{password}}@pgbouncer.pgbouncer.svc.cluster.local:5432/vault?sslmode=require
+###############################################################################
+
+module "pgbouncer_sao_paulo" {
+  source = "./modules/pgbouncer"
+
+  providers = {
+    helm       = helm.sao_paulo
+    kubernetes = kubernetes.sao_paulo
+  }
+
+  namespace = "pgbouncer"
+
+  # Uses the geo-local split-horizon DNS — São Paulo resolves this to the replica
+  postgres_host     = module.traffic_manager.geo_fqdn
+  postgres_database = module.postgresql.vault_database_name
+  postgres_username = var.postgres_admin_username
+  postgres_password = var.postgres_admin_password
+
+  pool_mode         = "transaction"
+  max_client_conn   = 1000
+  default_pool_size = 20
+  min_pool_size     = 5
+  reserve_pool_size = 5
+  replica_count     = 2
+}
+
+###############################################################################
+# pgBouncer — Connection Pooler (London)
+###############################################################################
+
+module "pgbouncer_london" {
+  source = "./modules/pgbouncer"
+
+  providers = {
+    helm       = helm.london
+    kubernetes = kubernetes.london
+  }
+
+  namespace = "pgbouncer"
+
+  # Uses the geo-local split-horizon DNS — London resolves this to the primary
+  postgres_host     = module.traffic_manager.geo_fqdn
+  postgres_database = module.postgresql.vault_database_name
+  postgres_username = var.postgres_admin_username
+  postgres_password = var.postgres_admin_password
+
+  pool_mode         = "transaction"
+  max_client_conn   = 1000
+  default_pool_size = 20
+  min_pool_size     = 5
+  reserve_pool_size = 5
+  replica_count     = 2
 }
